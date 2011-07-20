@@ -1,0 +1,5 @@
+Generates rudimentary rudimentary bibtex file by parsing \cite*{}
+references in a document(s), and crossreferences the citekeys
+with the ones in your Papers2 databse.
+
+Requires Python >= 2.5 and Papers >= 2.0.8
