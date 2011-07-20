@@ -1,4 +1,4 @@
-Generates rudimentary rudimentary bibtex file by parsing \cite*{}
+Generates rudimentary bibtex file by parsing \cite*{}
 references in a document(s), and crossreferences the citekeys
 with the ones in your Papers2 databse.
 
