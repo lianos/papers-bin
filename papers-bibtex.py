@@ -7,8 +7,29 @@ with the ones in your Papers2 databse.
 
 Requires Python >= 2.5 and Papers >= 2.0.8
 """
-import re, os, time, sys
+import re, os, time, sys, glob, itertools
 from optparse import OptionParser
+
+CITEKEYS = {} # This keys are found in Publication.citekey
+AUTHORS = {}
+JOURNALS = {}
+PAPERS = {}
+
+citekey_re = re.compile(r"""\\cite(?:t|p)?\{(.*?)\}""", re.MULTILINE)
+
+def extract_citekeys(text):
+    citations = citekey_re.findall(text)
+    if len(citations) > 0:
+        for citation in citations:
+            for citekey in citation.split(','):
+                citekey = citekey.strip()
+                if citekey not in CITEKEYS:
+                    CITEKEYS[citekey] = 1
+                else:
+                    CITEKEYS[citekey] += 1
+
+def connect_database(dbpath):
+    return None
 
 if __name__ == '__main__':
     usage = """usage: %prog [OPTIONS] FILE1 [FILES ...]
@@ -25,7 +46,7 @@ if __name__ == '__main__':
     parser.add_option('-o', '--out', dest="out", default=None,
                       help="The file to save the output to, defaults " \
                            "to STDOUT")
-    parser.add_optoin('-d', '--db', dest="db",
+    parser.add_option('-d', '--db', dest="dbpath",
                       help="The path to the Papers2 sqlite database",
                       default="~/Library/Papers2/Library.papers2/Database.papersdb")
     parser.add_option('-v', '--verbose', action='store_true', default=False,
@@ -35,18 +56,36 @@ if __name__ == '__main__':
     
     if options.out is None:
         outfile = sys.stdout
+        report = sys.stderr
     else:
         if os.path.isfile(options.out):
             parser.error("Outfile already exists")
         outfile = open(options.out, 'w')
+        report = sys.stdout
     
     try:
-        dbconn = connect_database()
+        dbconn = connect_database(options.dbpath)
     except:
         parser.error("Can not connect to database")
     
-    ## TODO
-    ##   generate file list to read
-    ##   extract \cite*
-    ##   generate bibtex entries
+    ## match input files and flatten + uniqify potentiall nested list
+    infiles = [glob.glob(fn) for fn in args]
+    infiles = set(itertools.chain(*infiles))
+    
+    if options.verbose:
+        report.write("Parsing files: " + ','.join(infiles) + "\n")
+    
+    for infile in infiles:
+        if not os.path.isfile(infile):
+            if options.verbose:
+                report.write("Can't load file %s" % infile)
+            continue
+        fh = open(infile, 'r')
+        for line in fh:
+            extract_citekeys(line)
+    
+    if options.verbose:
+        report.write("=== Citekeys Used ===\n")
+        for citation in CITEKEYS:
+            report.write("%s : %d\n" % (citation, CITEKEYS[citation]))
     
