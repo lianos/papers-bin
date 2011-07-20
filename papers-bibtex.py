@@ -37,6 +37,7 @@ Forget the complex query, just use bundle_string for journal name
 """
 import re, os, time, sys, glob, itertools, sqlite3
 from optparse import OptionParser
+from ConfigParser import ConfigParser, NoOptionError
 
 CITEKEYS = {} # This keys are found in Publication.citekey
 AUTHORS = {}
@@ -179,11 +180,23 @@ if __name__ == '__main__':
         report = sys.stdout
         to_stdout = False
     
+    dbpath = options.dbpath
+    ## override options with values in ~/.papersrc
+    config_file = os.path.expanduser('~/.papersrc')
+    if os.path.isfile(config_file):
+        cparser = ConfigParser()
+        cparser.read(config_file)
+        try:
+            dbpath = cparser.get('appinfo', 'dbpath')
+        except NoOptionError:
+            pass
+    
+    ## Check arguments and run
     try:
         # dbconn = connect_database(options.dbpath)
-        dbconn = sqlite3.connect(options.dbpath)
+        dbconn = sqlite3.connect(dbpath)
     except:
-        parser.error("Can not connect to database")
+        parser.error("Can not connect to database: %s" % dbpath)
     dbconn.row_factory = dict_factory
     
     ## match input files and flatten + uniqify potentiall nested list

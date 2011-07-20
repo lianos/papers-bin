@@ -3,3 +3,13 @@ references in a document(s), and crossreferences the citekeys
 with the ones in your Papers2 databse.
 
 Requires Python >= 2.5 and Papers >= 2.0.8
+
+Create a `~/.papersrc` to override default settings. This file should be
+formatted such that Python's ConfigParser can read it.
+
+For instance, I store my Papers2 folder in my Dropbox, so my `~/.papersrc`
+file looks like so:
+
+    [appinfo]
+    dbpath = /Users/stavros/Dropbox/Papers2/Library.papers2/Database.papersdb
+
