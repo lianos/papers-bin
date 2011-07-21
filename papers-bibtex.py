@@ -1,151 +1,198 @@
 #!/usr/bin/env python
 
 """
-Generates rudimentary bibtex file by parsing \cite*{}
-references in a document(s), and crossreferences the citekeys
-with the ones in your Papers2 databse.
+Drives functionality that interacts with the Papers2 database.
 
-Requires Python >= 2.5 and Papers >= 2.0.8
-
-Minimal BibTex entry looks like so:
-
-@article{Proudfoot:2004gs, citekey
-author = {Proudfoot, Nick}, author_string
-title = {{New perspectives on connecting ...}}, attributed_title
-journal = {Current opinion in cell biology}, bundle_string
-year = {2004},  publication_date (99200406011200000000222000)
-month = {jun},
-volume = {16}, volume
-number = {3}, number
-pages = {272--278} startpage -- endpage
-}
-
-To get the journal name, use the `bundle` column in Pulblication and join it to NameVariant.object_id
-
-select
-  p.publication_date, p.author_string, p.attributed_title,
-  p.bundle, p.bundle_string, p.volume, p.number, p.startpage,
-  p.endpage, n.name
-from
-  Publication as p
-inner join NameVariant as n on p.bundle=n.object_id
-where
-  p.citekey="Sandberg:2008ks";
-
-Forget the complex query, just use bundle_string for journal name
-  
+Requires Python >= 2.5 and Papers >= 2.0.8  
 """
+
 import re, os, time, sys, glob, itertools, sqlite3
 from optparse import OptionParser
 from ConfigParser import ConfigParser, NoOptionError
 
-CITEKEYS = {} # This keys are found in Publication.citekey
-AUTHORS = {}
-JOURNALS = {}
-PAPERS = {}
+DEFAULTS = {
+  'dbpath' : "~/Library/Papers2/Library.papers2/Database.papersdb",
+}
 
-citekey_re = re.compile(r"""\\cite(?:t|p)?\{(.*?)\}""", re.MULTILINE)
-def extract_citekeys(text):
-    citations = citekey_re.findall(text)
-    if len(citations) > 0:
-        for citation in citations:
-            for citekey in citation.split(','):
-                citekey = citekey.strip()
-                if citekey not in CITEKEYS:
-                    CITEKEYS[citekey] = 1
-                else:
-                    CITEKEYS[citekey] += 1
+to_stdout = True
+outfile = sys.stdout
+report = sys.stderr
+
+# if os.path.isfile(options.out):
+#     parser.error("Outfile already exists")
+# outfile = open(options.out, 'w')
+# report = sys.stdout
+# to_stdout = False
+
+def filter_files(filelist):
+    """Returns a list of files that can be 'found'"""
+    found = []
+    if len(filelist) == 0:
+        return found
+    for infile in filelist:
+        print "checking", infile
+        if os.path.isfile(infile):
+            found.append(infile)
+    return found
 
 def dict_factory(cursor, row):
+    """Used to extract results from a sqlite3 row by name"""
     d = {}
     for idx, col in enumerate(cursor.description):
         d[col[0]] = row[idx]
     return d
 
-month_xlate = {
- '01' : 'jan', '02' : 'feb', '03' : 'mar', '04' : 'apr',
- '05' : 'may', '06' : 'jun', '07' : 'jul', '08' : 'aug',
- '09' : 'sep', '10' : 'oct', '11' : 'nov', '12' : 'dec'
-}
-def convert_date(pub_date, month=(6,7), year=(2,5)):
-    """99200406011200000000222000 == Jun 2004
-    returns (month, year) as strings
-    """
-    try:
-        cmonth = month_xlate[pub_date[month[0]:month[1]+1]]
-    except:
-        cmonth = ''
-    try:
-        cyear = pub_date[year[0]:year[1]+1]
-    except:
-        cyear = ''
-    return {'month' : cmonth, 'year' : cyear}
+###############################################################################
+## Interface to Papers
+class Papers(object):
+    """Interface to Papers2.app"""
+    
+    _xlate_month = {
+        '01' : 'Jan', '02' : 'Feb', '03' : 'Mar', '04' : 'Apr',
+        '05' : 'May', '06' : 'Jun', '07' : 'Jul', '08' : 'Aug',
+        '09' : 'Sep', '10' : 'Oct', '11' : 'Nov', '12' : 'Dec'
+    }
+    
+    def __init__(self, dbpath):
+        self.dbpath = dbpath
+        self.dbconn = sqlite3.connect(dbpath)
+        self.dbconn.row_factory = dict_factory
+    
+    def parse_publication_date(self, pub_date, translate_month=True, month=(6,7),
+                               year=(2,5)):
+        """99200406011200000000222000 == Jun 2004
+        returns (month, year) as strings
+        """
+        try:
+            cmonth = pub_date[month[0]:month[1]+1]
+            if translate_month:
+                cmonth = Papers._xlate_month[cmonth]
+        except:
+            cmonth = ''
+        try:
+            cyear = pub_date[year[0]:year[1]+1]
+        except:
+            cyear = ''
+        return {'month' : cmonth, 'year' : cyear}
+    
+    def query_papers_by_citekey(self, citekeys, n=100):
+        """Returns summary information for each paper matched to citekey(s)"""
+        query = """SELECT publication_date, full_author_string,
+                   attributed_title, bundle_string, volume, number,
+                   startpage, endpage, citekey
+                   FROM Publication WHERE citekey IN (%s)"""
+        results = {}
+        c = self.dbconn.cursor()
+        while len(citekeys) > 0:
+            take = min(len(citekeys), n)
+            cites = ['"%s"' % x for x in citekeys[0:take]]
+            cites = ','.join(cites)
+            citekeys = citekeys[take:]
+            c.execute(query % cites)
+            for row in c:
+                date = self.parse_publication_date(row['publication_date'])
+                citekey = row['citekey']
+                entry = {
+                  'title' : row['attributed_title'],
+                  'author' : row['full_author_string'],
+                  'journal' : row['bundle_string'],
+                  'citekey' : citekey
+                }            
+                if date['month'] is not None:
+                    entry['month'] = date['month']
+                if date['year'] is not None:
+                    entry['year'] = date['year']
+                if row['number'] is not None:
+                    entry['number'] = row['number']
+                if row['volume'] is not None:
+                    entry['volume'] = row['volume']
+                if row['startpage'] is not None and row['endpage'] is not None:
+                    entry['pages'] = "%s--%s" % (row['startpage'], row['endpage'])
+                results[citekey] = entry
+        return results
 
-def convert_author_style(author_string, style="default"):
-    # return author_string
-    if style == "default":
-        authors = author_string.replace("and", "").split(',')
-        mangled = list()
-        for author in authors:
-            pieces = author.strip().split()
-            lastname = pieces[-1]
-            rest = ' '.join(pieces[:-1])
-            mangled.append("%s, %s" % (lastname, rest))
-        author_string = ' and '.join(mangled)
-    return author_string
+# END : Class Papers
 
-def lookup_citations(dbconn, citekeys, n=100):
-    query = """SELECT publication_date, full_author_string,
-               attributed_title, bundle_string, volume, number,
-               startpage, endpage, citekey
-               FROM Publication WHERE citekey IN (%s)"""
-    results = {}
-    c = dbconn.cursor()
-    while len(citekeys) > 0:
-        take = min(len(citekeys), n)
-        cites = ['"%s"' % x for x in citekeys[0:take]]
-        cites = ','.join(cites)
-        citekeys = citekeys[take:]
-        c.execute(query % cites)
-        for row in c:
-            date = convert_date(row['publication_date'])
-            citekey = row['citekey']
-            entry = {
-              'title' : row['attributed_title'],
-              'author' : convert_author_style(row['full_author_string']),
-              'journal' : row['bundle_string'],
-              'citekey' : citekey
-            }            
-            if date['month'] is not None:
-                entry['month'] = date['month']
-            if date['year'] is not None:
-                entry['year'] = date['year']
-            if row['number'] is not None:
-                entry['number'] = row['number']
-            if row['volume'] is not None:
-                entry['volume'] = row['volume']
-            if row['startpage'] is not None and row['endpage'] is not None:
-                entry['pages'] = "%s--%s" % (row['startpage'], row['endpage'])
-            results[citekey] = entry
-    return results
+class PapersOptionParser(OptionParser, object):
+    """Documentation for PapersOptionParser"""
+    
+    def __init__(self, usage=None):
+        super(PapersOptionParser, self).__init__(usage=usage)
+        self.add_option('-o', '--out', dest="out", default=None,
+                        help="The file to save the output to, defaults " \
+                             "to STDOUT")
+        self.add_option('-d', '--dbpath', dest="dbpath",
+                        help="The path to the Papers2 sqlite database",
+                        default=DEFAULTS['dbpath'])
+        self.add_option('-v', '--verbose', action='store_true', default=False,
+                        help='Make some noise')
+        self.add_option('-c', '--config', default="~/.papersrc",
+                        help="The path to the papers utility config file")
+    
+    def parse_args(self, args=None, values=None):
+        """docstring for parse_args"""
+        (options, args) = super(PapersOptionParser, self).parse_args(args, values)
+        
+        ## override options with values in ~/.papersrc
+        config_file = os.path.expanduser(options.config)
+        if os.path.isfile(config_file):
+            cparser = ConfigParser()
+            cparser.read(config_file)
+            try:
+                options.dbpath = cparser.get('appinfo', 'dbpath')
+            except NoOptionError:
+                pass
+        
+        # if os.path.isfile(options.out):
+        #     parser.error("Outfile already exists")
+        # outfile = open(options.out, 'w')
+        # report = sys.stdout
+        # to_stdout = False
+        
+        return (options, args)
 
-def as_bibtex(info):
-    result = []
-    header = '@article{%s,\n' % info['citekey'].encode('utf-8')
-    for key in info:
-        if key == 'citekey':
-            continue
-        if key == 'title':
-            add = 'title = {{%s}}' % info['title'].encode('utf-8')
-        else:
-            add = '%s = {%s}' % (key, info[key].encode('utf-8'))
-        result.append(add)
-    meta = ",\n".join(result)
-    result = header + meta + "\n}"
-    return result
 
-if __name__ == '__main__':
-    usage = """usage: %prog [OPTIONS] FILE1 [FILES ...]
+# END : Class PapersOptionParser
+
+
+###############################################################################
+## BibTex Generator
+## Generates rudimentary bibtex file by parsing \cite*{}
+## references in a document(s), and crossreferences the citekeys
+## with the ones in your Papers2 databse.
+## 
+## 
+## Minimal BibTex entry looks like so:
+## 
+## @article{Proudfoot:2004gs, citekey
+## author = {Proudfoot, Nick}, author_string
+## title = {{New perspectives on connecting ...}}, attributed_title
+## journal = {Current opinion in cell biology}, bundle_string
+## year = {2004},  publication_date (99200406011200000000222000)
+## month = {jun},
+## volume = {16}, volume
+## number = {3}, number
+## pages = {272--278} startpage -- endpage
+## }
+## 
+## To get the journal name, use the `bundle` column in Pulblication and join it
+## to NameVariant.object_id
+## 
+## select
+##   p.publication_date, p.author_string, p.attributed_title,
+##   p.bundle, p.bundle_string, p.volume, p.number, p.startpage,
+##   p.endpage, n.name
+## from
+##   Publication as p
+## inner join NameVariant as n on p.bundle=n.object_id
+## where
+##   p.citekey="Sandberg:2008ks";
+## 
+## Forget the complex query, just use bundle_string for journal name
+class BibtexOptionParser(PapersOptionParser):
+    """OptionParser for the bibtex command"""
+    
+    usage = """usage: %prog bibtex [OPTIONS] FILE1 [FILES ...]
     
     Parses the file(s) identified by the unix blob-like matching patterns
     provided in the positional arguments for cite*{...} commands in
@@ -153,73 +200,136 @@ if __name__ == '__main__':
     the citekeys in your Papers2 database.
     
     If a -o/--out BIBFILE.tex option is not provided, the bibtex file will
-    be streamed to STDOUT.
-    """
-    parser = OptionParser(usage=usage)
-    parser.add_option('-o', '--out', dest="out", default=None,
-                      help="The file to save the output to, defaults " \
-                           "to STDOUT")
-    parser.add_option('-d', '--dbpath', dest="dbpath",
-                      help="The path to the Papers2 sqlite database",
-                      default="~/Library/Papers2/Library.papers2/Database.papersdb")
-    parser.add_option('-v', '--verbose', action='store_true', default=False,
-                      help='Make some noise')
-    parser.add_option('-f', '--force', dest='force', default=False,
-                      action='store_true',
-                      help="Set to force overwrite of existing output bib file")
-    (options, args) = parser.parse_args()
+    be streamed to STDOUT."""
     
-    if options.out is None:
-        to_stdout = True
-        outfile = sys.stdout
-        report = sys.stderr
-    else:
-        if os.path.isfile(options.out):
-            parser.error("Outfile already exists")
-        outfile = open(options.out, 'w')
-        report = sys.stdout
-        to_stdout = False
+    def __init__(self):
+        super(BibtexOptionParser, self).__init__(usage=BibtexOptionParser.usage)
+        self.add_option('-f', '--force', dest='force', default=False,
+                        action='store_true',
+                        help="Set to force overwrite of existing output bib file")
+        self.infiles = []
     
-    dbpath = options.dbpath
-    ## override options with values in ~/.papersrc
-    config_file = os.path.expanduser('~/.papersrc')
-    if os.path.isfile(config_file):
-        cparser = ConfigParser()
-        cparser.read(config_file)
-        try:
-            dbpath = cparser.get('appinfo', 'dbpath')
-        except NoOptionError:
-            pass
+    def parse_args(self, args=sys.argv[2:], values=None):
+        (options, args) = super(BibtexOptionParser, self).parse_args(args, values)
+        
+        ## match input files and flatten + uniqify potentiall nested list
+        infiles = [glob.glob(fn) for fn in args]
+        infiles = set(itertools.chain(*infiles))
+        self.infiles = filter_files(infiles)
+        if len(self.infiles) == 0:
+            self.error("Valid input file list required (no files found)")
+        return (options, args)
     
-    ## Check arguments and run
-    try:
-        # dbconn = connect_database(options.dbpath)
-        dbconn = sqlite3.connect(dbpath)
-    except:
-        parser.error("Can not connect to database: %s" % dbpath)
-    dbconn.row_factory = dict_factory
+            
+# END : Class BibtexOptionParser
+
+class BibtexGenerator(object):
+    """Generats bibtex file from input"""
     
-    ## match input files and flatten + uniqify potentiall nested list
-    infiles = [glob.glob(fn) for fn in args]
-    infiles = set(itertools.chain(*infiles))
+    citekey_regex = re.compile(r"""\\cite(?:t|p)?\{(.*?)\}""", re.MULTILINE)
     
-    if options.verbose:
-        report.write("Parsing files: " + ','.join(infiles) + "\n")
+    def __init__(self, app, infiles, author_style="default"):
+        self.app = app
+        self.infiles = filter_files(infiles)
+        self.author_style = author_style
+        self.citekeys = {}
     
-    for infile in infiles:
-        if not os.path.isfile(infile):
-            if options.verbose:
-                report.write("Can't load file %s" % infile)
-            continue
+    def extract_citekeys_from_line(self, line, store=True, regex=None):
+        if regex is None:
+            regex = BibtexGenerator.citekey_regex
+        citations = regex.findall(line)
+        citekeys = []
+        if len(citations) > 0:
+            for citation in citations:
+                for citekey in citation.split(','):
+                    citekey = citekey.strip()
+                    citekeys.append(citekey)
+                    if store:
+                        try:
+                            self.citekeys[citekey] += 1
+                        except KeyError:
+                            self.citekeys[citekey] = 1
+        return citekeys
+                    
+    def extract_citekeys_from_file(self, infile, store=True, regex=None):
+        if regex is None:
+            regex = BibtexGenerator.citekey_regex
+        allkeys = []
         fh = open(infile, 'r')
         for line in fh:
-            extract_citekeys(line)
+            allkeys.append(self.extract_citekeys_from_line(line, store=store))
+        fh.close()
+        return allkeys
     
-    citations = lookup_citations(dbconn, CITEKEYS.keys())
+    def extract_citekeys(self, infiles=None):
+        """Extracts the citekeys for `infiles`"""
+        if infiles is None:
+            infiles = self.infiles
+        else:
+            infiles = filter_files(infiles)
+        if len(self.infiles) == 0:
+            raise ValueError("No input files found")
+        for infile in infiles:
+            self.extract_citekeys_from_file(infile, store=True)
     
-    for citation in citations:
-        outfile.write(as_bibtex(citations[citation]))
-        outfile.write("\n")
+    def convert_author_style(self, author_string, style=None):
+        if style is None:
+            style = self.author_style
+        if style == "default":
+            authors = author_string.replace("and", "").split(',')
+            mangled = list()
+            for author in authors:
+                pieces = author.strip().split()
+                lastname = pieces[-1]
+                rest = ' '.join(pieces[:-1])
+                mangled.append("%s, %s" % (lastname, rest))
+            author_string = ' and '.join(mangled)
+        return author_string
+    
+    def as_bibtex(self, info):
+        result = []
+        header = '@article{%s,\n' % info['citekey'].encode('utf-8')
+        info['author'] = self.convert_author_style(info['author'])
+        for key in info:
+            if key == 'citekey':
+                continue
+            if key == 'title':
+                add = 'title = {{%s}}' % info['title'].encode('utf-8')
+            else:
+                add = '%s = {%s}' % (key, info[key].encode('utf-8'))
+            result.append(add)
+        meta = ",\n".join(result)
+        result = header + meta + "\n}"
+        return result
+    
+    def generate_bibtex(self, fhandle):
+        """Dumps the generated bibtex file into fhandle"""
+        citations = self.app.query_papers_by_citekey(self.citekeys.keys())
+        for citation in citations:
+            fhandle.write(self.as_bibtex(citations[citation]))
+            fhandle.write("\n")
+
+# END : Class BibtexGenerator
+
+## Drivers
+
+def do_bibtex():
+    """Run the bibtex command"""
+    parser = BibtexOptionParser()
+    (options, args) = parser.parse_args()
+    
+    report = sys.stderr
+    outfile = sys.stdout
+    to_stdout = True
+    
+    app = Papers(options.dbpath)
+    
+    if options.verbose:
+        report.write("Parsing files: " + ','.join(parser.infiles) + "\n")
+    
+    bibtex = BibtexGenerator(app, parser.infiles)
+    bibtex.extract_citekeys()
+    bibtex.generate_bibtex(sys.stdout)
     
     if options.verbose:
         report.write("=== Citekeys Used ===\n")
@@ -228,4 +338,32 @@ if __name__ == '__main__':
     
     if not to_stdout:
         outfile.close()
+    
+
+if __name__ == '__main__':
+    usage = """usage: %prog command [OPTIONS] ARGS
+    
+    Commands
+    --------
+        - bibtex : Generates a bibtex file by parsing the references in the
+                   files provided in ARGS
+    """
+    
+    commands = {'bibtex' : do_bibtex}
+    
+    if len(sys.argv) < 2:
+        user_cmd = ''
+    else:
+        user_cmd = sys.argv[1]
+    
+    if user_cmd in commands:
+        do = commands[user_cmd]
+    else:
+        print "Unknown command", user_cmd
+        print usage
+        sys.exit(1)
+    
+    do()
+    
+    
 

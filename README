@@ -1,3 +1,6 @@
+Copyright 2011 Steve Lianoglou
+License: GPL
+
 Generates rudimentary bibtex file by parsing \cite*{}
 references in a document(s), and crossreferences the citekeys
 with the ones in your Papers2 databse.
