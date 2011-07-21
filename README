@@ -1,6 +1,4 @@
-Copyright 2011 Steve Lianoglou
-All rights reserved.
-
+Copyright 2011 Steve Lianoglou, all rights reserved.
 License: GPL
 
 The papers.py script drives functionality against Papers2
@@ -25,7 +23,14 @@ file looks like so:
 
 Note that this program is not endorsed by the authors of Papers.app.
 
-The functionality in this script will perform READ-ONLY queries against your
-Papers.app sqlite database. I cannot guarantee that it will not corrupt your
-database (it really shouldn't, though, as I use this program often), so use it
-at your own risk.
+
+DISCLAIMER
+----------
+
+The functionality in the scripts provided will perform READ-ONLY queries
+against your Papers.app sqlite database. I cannot guarantee that it will not 
+corrupt your database, so use it at your own risk.
+
+That having been said, I use this script too, so it really shouldn't corrupt
+your database.  Murphy's law being what it is and all, I feel compelled
+to write this blurb in case it wasn't obvious.

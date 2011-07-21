@@ -3,7 +3,11 @@
 """
 Drives functionality that interacts with the Papers2 database.
 
-Requires Python >= 2.5 and Papers >= 2.0.8  
+Requires Python >= 2.5 and Papers >= 2.0.8
+
+Copyright 2011 Steve Lianoglou, all rights reserved
+
+License: GPL
 """
 
 import re, os, time, sys, glob, itertools, sqlite3
@@ -13,10 +17,6 @@ from ConfigParser import ConfigParser, NoOptionError
 DEFAULTS = {
   'dbpath' : "~/Library/Papers2/Library.papers2/Database.papersdb",
 }
-
-to_stdout = True
-outfile = sys.stdout
-report = sys.stderr
 
 def filter_files(filelist):
     """Returns a list of files that can be 'found'"""
@@ -362,14 +362,9 @@ if __name__ == '__main__':
     else:
         user_cmd = sys.argv[1]
     
-    if user_cmd in commands:
-        do_cmd = commands[user_cmd]
-    else:
+    if user_cmd not in commands:
         print "ERROR: Unknown command", user_cmd, "\n"
         print usage
         sys.exit(1)
     
-    do_cmd()
-    
-    
-
+    commands[user_cmd]()
