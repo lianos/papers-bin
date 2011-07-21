@@ -14,8 +14,9 @@ import re, os, time, sys, glob, itertools, sqlite3
 from optparse import OptionParser
 from ConfigParser import ConfigParser, NoOptionError
 
+## You can overide these values in ~/.papersc
 DEFAULTS = {
-  'dbpath' : "~/Library/Papers2/Library.papers2/Database.papersdb",
+  'dbpath' : "~/Documents/Papers2/Library.papers2/Database.papersdb",
 }
 
 def filter_files(filelist):
@@ -49,6 +50,13 @@ class Papers(object):
     def __init__(self, dbpath):
         self.dbpath = dbpath
         self.dbconn = sqlite3.connect(dbpath)
+        
+        ## Checks to see if this is a valid db connection
+        c = self.dbconn.cursor()
+        try:
+            c.execute("SELECT * FROM metadata LIMIT 1;")
+        except sqlite3.OperationalError:
+            raise ValueError("Invalid Papers database")
         self.dbconn.row_factory = dict_factory
     
     def parse_publication_date(self, pub_date, translate_month=True, month=(6,7),
@@ -69,7 +77,26 @@ class Papers(object):
         return {'month' : cmonth, 'year' : cyear}
     
     def query_papers_by_citekey(self, citekeys, n=100):
-        """Returns summary information for each paper matched to citekey(s)"""
+        """Returns summary information for each paper matched to citekey(s).
+        
+        The returned object is a `dict` keyed on the citekey for each paper,
+        the values are dicts with the following minimal paper info:
+        
+          - title   :
+          - authors : Firstname Lastname, First Last, and First Last
+          - journal : Journal name (as listed in Publications db), this can
+                      be done better by JOINing against NameVariant, but we
+                      are not doing that for now
+          - citekey : The citekey
+          
+          And optionally, if these are found in the Publication record:
+          
+          - volume  : Journal volume
+          - number  : Journal number
+          - pages   : start--end pages
+          - month   : Month of publication date (as 3 letter name)
+          - year    : 4 digit (character) year of publication
+        """
         query = """SELECT publication_date, full_author_string,
                    attributed_title, bundle_string, volume, number,
                    startpage, endpage, citekey
@@ -114,9 +141,11 @@ class PapersOptionParser(OptionParser, object):
         self.add_option('-o', '--out', dest="out", default=None,
                         help="The file to save the output to, defaults " \
                              "to STDOUT")
-        self.add_option('-d', '--dbpath', dest="dbpath",
-                        help="The path to the Papers2 sqlite database",
-                        default=DEFAULTS['dbpath'])
+        self.add_option('-d', '--dbpath', dest="dbpath", default=None,
+                        help="The path to the Papers2 sqlite database, "  \
+                             "defaults to [%s]. If this is set, it will " \
+                             "override the value set in your ~/.papersrc" \
+                             "file." % DEFAULTS['dbpath'])
         self.add_option('-v', '--verbose', action='store_true', default=False,
                         help='Make some noise')
         self.add_option('-c', '--config', default="~/.papersrc",
@@ -130,7 +159,15 @@ class PapersOptionParser(OptionParser, object):
                         
     
     def parse_args(self, args=None, values=None):
-        """docstring for parse_args"""
+        """Parses the arguments.
+        
+        The precedence of arguments that get stuffed into `options` are
+        (from highest to lowest):
+        
+          - values passed in through command line args/flags
+          - values set in ~/.papersrc
+          - DEFAULTS
+        """
         (options, args) = super(PapersOptionParser, self).parse_args(args, values)
         
         if options.out is None:
@@ -149,11 +186,15 @@ class PapersOptionParser(OptionParser, object):
         if os.path.isfile(config_file):
             cparser = ConfigParser()
             cparser.read(config_file)
-            try:
-                options.dbpath = cparser.get('appinfo', 'dbpath')
-            except NoOptionError:
-                pass
-                
+            if options.dbpath is None:
+                try:
+                    options.dbpath = cparser.get('appinfo', 'dbpath')
+                except NoOptionError:
+                    pass
+        
+        if options.dbpath is None:
+            options.dbpath = DEFAULTS['dbpath']
+        
         return (options, args)
     
     def cleanup(self):
@@ -217,10 +258,11 @@ class BibtexOptionParser(PapersOptionParser):
     def parse_args(self, args=sys.argv[2:], values=None):
         (options, args) = super(BibtexOptionParser, self).parse_args(args, values)
         
+        ## OptionParser already matches and expands unix globs for us!
         ## match input files and flatten + uniqify potentiall nested list
-        infiles = [glob.glob(fn) for fn in args]
-        infiles = set(itertools.chain(*infiles))
-        self.infiles = filter_files(infiles)
+        ## infiles = [glob.glob(fn) for fn in args]
+        ## infiles = set(itertools.chain(*infiles))
+        self.infiles = filter_files(args)
         if len(self.infiles) == 0:
             self.error("Valid input file list required (no files found)")
         return (options, args)
@@ -316,9 +358,10 @@ class BibtexGenerator(object):
 
 # END : Class BibtexGenerator
 
-## Drivers
+## Drivers -- all these functions must accept a Papers (app) object as
+## their single parameter
 
-def do_bibtex():
+def do_bibtex(app):
     """Run the bibtex command"""
     parser = BibtexOptionParser()
     (options, args) = parser.parse_args()
@@ -326,7 +369,12 @@ def do_bibtex():
     report = parser.report
     outfile = parser.out
     
-    app = Papers(options.dbpath)
+    # try:
+    #     app = Papers(options.dbpath)
+    # except sqlite3.OperationalError:
+    #     parser.error("Problem connecting to database, is the following " \
+    #                  "path to your Database.papersdb database correct?\n" \
+    #                  "\t%s\n" % options.dbpath)
     
     if options.verbose:
         report.write("Parsing files: " + ','.join(parser.infiles) + "\n")
@@ -346,25 +394,37 @@ def do_bibtex():
 if __name__ == '__main__':
     usage = """usage: %prog COMMAND [OPTIONS] ARGS
     
-    Try `%prog COMMAND --help` for help for the specific commands listed below.
+    This tool is a wrapper for (eventually) several COMMANDs that query your
+    Papers2 database. Try `%prog COMMAND --help` for help for the specific
+    COMMANDs that are listed below.
     
     Commands
     --------
         - bibtex : Generates a bibtex file by parsing the references in the
                    files provided in ARGS
     """
-    usage = usage.replace("%prog", os.path.basename(sys.argv[0]))
     
     commands = {'bibtex' : do_bibtex}
     
-    if len(sys.argv) < 2:
+    usage = usage.replace("%prog", os.path.basename(sys.argv[0]))
+    parser = PapersOptionParser(usage=usage)
+    (options, args) = parser.parse_args()
+    
+    if len(args) == 0:
         user_cmd = ''
     else:
-        user_cmd = sys.argv[1]
+        user_cmd = args[0]
     
     if user_cmd not in commands:
-        print "ERROR: Unknown command", user_cmd, "\n"
-        print usage
-        sys.exit(1)
+        if len(user_cmd) > 0:
+            user_cmd = "'%s'" % user_cmd
+        parser.error("Unknown command %s\n" % user_cmd)
     
-    commands[user_cmd]()
+    try:
+        app = Papers(options.dbpath)
+    except ValueError:
+        parser.error("Problem connecting to database, is the following " \
+                     "path to your Database.papersdb database correct?\n" \
+                     "\t%s\n" % options.dbpath)
+
+    commands[user_cmd](app)
