@@ -1,9 +1,16 @@
 Copyright 2011 Steve Lianoglou
+All rights reserved.
+
 License: GPL
 
-Generates rudimentary bibtex file by parsing \cite*{}
-references in a document(s), and crossreferences the citekeys
-with the ones in your Papers2 databse.
+The papers.py script drives functionality against Papers2
+
+Currently this script was written to auto-generate a bibtex file for the
+citations used in 1+ latex files. To generate one bibtex file to stdout
+for all of the *.tex files in the current directory, put papers.py in
+your PATH and:
+
+    $ papers.py bibtex *.tex > refs.bib
 
 Requires Python >= 2.5 and Papers >= 2.0.8
 
@@ -16,3 +23,9 @@ file looks like so:
     [appinfo]
     dbpath = /Users/stavros/Dropbox/Papers2/Library.papers2/Database.papersdb
 
+Note that this program is not endorsed by the authors of Papers.app.
+
+The functionality in this script will perform READ-ONLY queries against your
+Papers.app sqlite database. I cannot guarantee that it will not corrupt your
+database (it really shouldn't, though, as I use this program often), so use it
+at your own risk.

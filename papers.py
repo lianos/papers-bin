@@ -18,19 +18,12 @@ to_stdout = True
 outfile = sys.stdout
 report = sys.stderr
 
-# if os.path.isfile(options.out):
-#     parser.error("Outfile already exists")
-# outfile = open(options.out, 'w')
-# report = sys.stdout
-# to_stdout = False
-
 def filter_files(filelist):
     """Returns a list of files that can be 'found'"""
     found = []
     if len(filelist) == 0:
         return found
     for infile in filelist:
-        print "checking", infile
         if os.path.isfile(infile):
             found.append(infile)
     return found
@@ -128,10 +121,28 @@ class PapersOptionParser(OptionParser, object):
                         help='Make some noise')
         self.add_option('-c', '--config', default="~/.papersrc",
                         help="The path to the papers utility config file")
+        self.add_option('-f', '--force', dest='force', default=False,
+                        action='store_true',
+                        help="Set to force overwrite of existing output file")
+        self.out = None
+        self.report = None
+        self.to_stdout = None
+                        
     
     def parse_args(self, args=None, values=None):
         """docstring for parse_args"""
         (options, args) = super(PapersOptionParser, self).parse_args(args, values)
+        
+        if options.out is None:
+            self.to_stdout = True
+            self.out = sys.stdout
+            self.report = sys.stderr
+        else:
+            if os.path.isfile(options.out) and not options.force:
+                self.error("Outfile already exists. Use --force to override")
+            self.to_stdout = False
+            self.out = open(options.out, 'w')
+            self.report = sys.stdout
         
         ## override options with values in ~/.papersrc
         config_file = os.path.expanduser(options.config)
@@ -142,15 +153,12 @@ class PapersOptionParser(OptionParser, object):
                 options.dbpath = cparser.get('appinfo', 'dbpath')
             except NoOptionError:
                 pass
-        
-        # if os.path.isfile(options.out):
-        #     parser.error("Outfile already exists")
-        # outfile = open(options.out, 'w')
-        # report = sys.stdout
-        # to_stdout = False
-        
+                
         return (options, args)
-
+    
+    def cleanup(self):
+        if not self.to_stdout:
+            self.out.close()
 
 # END : Class PapersOptionParser
 
@@ -204,9 +212,6 @@ class BibtexOptionParser(PapersOptionParser):
     
     def __init__(self):
         super(BibtexOptionParser, self).__init__(usage=BibtexOptionParser.usage)
-        self.add_option('-f', '--force', dest='force', default=False,
-                        action='store_true',
-                        help="Set to force overwrite of existing output bib file")
         self.infiles = []
     
     def parse_args(self, args=sys.argv[2:], values=None):
@@ -299,7 +304,7 @@ class BibtexGenerator(object):
                 add = '%s = {%s}' % (key, info[key].encode('utf-8'))
             result.append(add)
         meta = ",\n".join(result)
-        result = header + meta + "\n}"
+        result = header + meta + "\n}\n"
         return result
     
     def generate_bibtex(self, fhandle):
@@ -318,9 +323,8 @@ def do_bibtex():
     parser = BibtexOptionParser()
     (options, args) = parser.parse_args()
     
-    report = sys.stderr
-    outfile = sys.stdout
-    to_stdout = True
+    report = parser.report
+    outfile = parser.out
     
     app = Papers(options.dbpath)
     
@@ -329,25 +333,27 @@ def do_bibtex():
     
     bibtex = BibtexGenerator(app, parser.infiles)
     bibtex.extract_citekeys()
-    bibtex.generate_bibtex(sys.stdout)
+    bibtex.generate_bibtex(outfile)
     
     if options.verbose:
         report.write("=== Citekeys Used ===\n")
-        for citation in CITEKEYS:
-            report.write("%s : %d\n" % (citation, CITEKEYS[citation]))
+        for citation, count in bibtex.citekeys.iteritems():
+            report.write("%s : %d\n" % (citation, count))
     
-    if not to_stdout:
-        outfile.close()
+    parser.cleanup()
     
 
 if __name__ == '__main__':
-    usage = """usage: %prog command [OPTIONS] ARGS
+    usage = """usage: %prog COMMAND [OPTIONS] ARGS
+    
+    Try `%prog COMMAND --help` for help for the specific commands listed below.
     
     Commands
     --------
         - bibtex : Generates a bibtex file by parsing the references in the
                    files provided in ARGS
     """
+    usage = usage.replace("%prog", os.path.basename(sys.argv[0]))
     
     commands = {'bibtex' : do_bibtex}
     
@@ -357,13 +363,13 @@ if __name__ == '__main__':
         user_cmd = sys.argv[1]
     
     if user_cmd in commands:
-        do = commands[user_cmd]
+        do_cmd = commands[user_cmd]
     else:
-        print "Unknown command", user_cmd
+        print "ERROR: Unknown command", user_cmd, "\n"
         print usage
         sys.exit(1)
     
-    do()
+    do_cmd()
     
     
 
