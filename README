@@ -21,12 +21,12 @@ file looks like so:
     [appinfo]
     dbpath = /Users/stavros/Dropbox/Papers2/Library.papers2/Database.papersdb
 
-Note that this program is not endorsed by or affiliated with the authors of
-Papers.app.
-
+Feel free to submit bugs/feature request through the tickets for this project. If you fork and extend this project, I'll gladly accept pull requests.
 
 DISCLAIMER
 ----------
+
+This script is not supported or endorsed by the Papers2 team. I'm making queries directly against the Papers database, the structure of which may change whenever they seem it fit to do so.
 
 The functionality in the scripts provided will perform READ-ONLY queries
 against your Papers.app sqlite database. I cannot guarantee that it will not 
@@ -35,3 +35,5 @@ corrupt your database, so use it at your own risk.
 That having been said, I use this script too, so it really shouldn't corrupt
 your database.  Murphy's law being what it is and all, I feel compelled
 to write this blurb in case it wasn't obvious.
+
+
