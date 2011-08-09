@@ -323,7 +323,9 @@ class BibtexGenerator(object):
         if style is None:
             style = self.author_style
         if style == "default":
-            authors = re.sub(r"\Wand\W", " ", author_string).split(',')
+            authors = re.sub(r" and ", ",", author_string)            
+            authors = re.sub(r",,", ",", authors)
+            authors = re.split(',',authors)
             mangled = list()
             for author in authors:
                 pieces = author.strip().split()
