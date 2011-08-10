@@ -273,7 +273,7 @@ class BibtexOptionParser(PapersOptionParser):
 class BibtexGenerator(object):
     """Generats bibtex file from input"""
     
-    citekey_regex = re.compile(r"""\\cite(?:t|p|alp|alt|year|yearpar|author)?\{(.*?)\}""", re.MULTILINE)
+    citekey_regex = re.compile(r"""\\cite(?:t|p|alp|alt|year|yearpar|author)(?:\[.*?\])?\{(.*?)\}""", re.MULTILINE)
     
     def __init__(self, app, infiles, author_style="default"):
         self.app = app
