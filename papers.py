@@ -142,9 +142,9 @@ class PapersOptionParser(OptionParser, object):
                         help="The file to save the output to, defaults " \
                              "to STDOUT")
         self.add_option('-d', '--dbpath', dest="dbpath", default=None,
-                        help="The path to the Papers2 sqlite database, "  \
-                             "defaults to [%s]. If this is set, it will " \
-                             "override the value set in your ~/.papersrc" \
+                        help="The path to the Papers2 sqlite database, "   \
+                             "defaults to [%s]. If this is set, it will "  \
+                             "override the value set in your ~/.papersrc " \
                              "file." % DEFAULTS['dbpath'])
         self.add_option('-v', '--verbose', action='store_true', default=False,
                         help='Make some noise')
