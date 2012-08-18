@@ -273,7 +273,7 @@ class BibtexOptionParser(PapersOptionParser):
 class BibtexGenerator(object):
     """Generats bibtex file from input"""
     
-    citekey_regex = re.compile(r"""\\cite(?:t|p)?\{(.*?)\}""", re.MULTILINE)
+    citekey_regex = re.compile(r"""\\cite(?:t|p|alp|alt|year|yearpar|author)(?:\[.*?\])?\{(.*?)\}""", re.MULTILINE)
     
     def __init__(self, app, infiles, author_style="default"):
         self.app = app
@@ -323,7 +323,9 @@ class BibtexGenerator(object):
         if style is None:
             style = self.author_style
         if style == "default":
-            authors = re.sub(r"\Wand\W", " ", author_string).split(',')
+            authors = re.sub(r" and ", ",", author_string)            
+            authors = re.sub(r",,", ",", authors)
+            authors = re.split(',',authors)
             mangled = list()
             for author in authors:
                 pieces = author.strip().split()
