@@ -5,7 +5,7 @@ Drives functionality that interacts with the Papers2 database.
 
 Requires Python >= 2.5 and Papers >= 2.0.8
 
-Copyright 2011 Steve Lianoglou, all rights reserved
+Copyright 2011-2012 Steve Lianoglou, all rights reserved
 
 License: GPL
 """
@@ -253,6 +253,11 @@ class BibtexOptionParser(PapersOptionParser):
     
     def __init__(self):
         super(BibtexOptionParser, self).__init__(usage=BibtexOptionParser.usage)
+        # self.add_option('-m', '--modify', dest="modify", default=None,
+        #                 help="A *.bib file you want to update. You might " \
+        #                      "bibtex entries for things that are not Papers " \
+        #                      "that you want to incorporate")
+        
         self.infiles = []
     
     def parse_args(self, args=sys.argv[2:], values=None):
@@ -273,7 +278,7 @@ class BibtexOptionParser(PapersOptionParser):
 class BibtexGenerator(object):
     """Generats bibtex file from input"""
     
-    citekey_regex = re.compile(r"""\\cite(?:t|p|alp|alt|year|yearpar|author)(?:\[.*?\])?\{(.*?)\}""", re.MULTILINE)
+    citekey_regex = re.compile(r"""\\cite(?:t|p|alp|alt|year|yearpar|author)?(?:\[.*?\])?\{(.*?)\}""", re.MULTILINE)
     
     def __init__(self, app, infiles, author_style="default"):
         self.app = app
